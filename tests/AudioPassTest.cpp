@@ -76,6 +76,7 @@ static bool runLayout (AudioPluginInstance& p, int numCh, double sr, int block)
 
 int main (int argc, char** argv)
 {
+    setvbuf (stdout, nullptr, _IONBF, 0);   // keep output even if something crashes
     if (argc < 2) { printf ("usage: AudioPassTest <plugin>\n"); return 2; }
 
     ScopedJuceInitialiser_GUI init;
