@@ -5,6 +5,7 @@
 // usage: AudioPassTest <path-to.vst3 | AU:aufx,Tpsh,Tico>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_events/juce_events.h>
+#include <cmath>
 
 using namespace juce;
 
@@ -110,8 +111,10 @@ int main (int argc, char** argv)
             found[0]->pluginFormatName.toRawUTF8(), found[0]->manufacturerName.toRawUTF8());
 
     bool ok = true;
-    for (auto [ch, sr, block] : { std::tuple { 2, 44100.0, 512 }, { 2, 48000.0, 1024 }, { 1, 48000.0, 256 } })
-        ok = runLayout (*plugin, ch, sr, block) && ok;
+    struct Case { int channels; double sampleRate; int blockSize; };
+    const Case cases[] { { 2, 44100.0, 512 }, { 2, 48000.0, 1024 }, { 1, 48000.0, 256 } };
+    for (const auto& c : cases)
+        ok = runLayout (*plugin, c.channels, c.sampleRate, c.blockSize) && ok;
 
     // Hosts such as AU hosts often restore parameters BEFORE prepareToPlay.
     // Mute the dry voice and set the shifted voices, then check they are audible.

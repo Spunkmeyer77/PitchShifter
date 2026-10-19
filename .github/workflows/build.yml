@@ -60,7 +60,16 @@ jobs:
           fi
 
       - name: Build
-        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 4
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! cmake --build build --config $BUILD_TYPE --parallel 4 2>&1 | tee build.log; then
+            # Surface compiler errors as annotations (readable without the raw log)
+            grep -E "error( [A-Z]+[0-9]+)?:" build.log | sort -u | head -20 | while IFS= read -r line; do
+              echo "::error::${line:0:900}"
+            done
+            exit 1
+          fi
 
       - name: Validate (pluginval)
         shell: bash
