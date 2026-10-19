@@ -87,4 +87,7 @@ if(PS_BUILD_TESTS)
         JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
     target_link_libraries(AudioPassTest PRIVATE
         juce::juce_audio_processors juce::juce_gui_basics juce::juce_recommended_config_flags)
+    if(APPLE)
+        target_link_libraries(AudioPassTest PRIVATE "-framework CoreAudioKit")
+    endif()
 endif()
