@@ -52,11 +52,11 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" == "macOS" ]; then
-            cmake -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+            cmake -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DPS_BUILD_TESTS=ON
           elif [ "$RUNNER_OS" == "Windows" ]; then
-            cmake -B build -G "Visual Studio 17 2022" -A x64
+            cmake -B build -G "Visual Studio 17 2022" -A x64 -DPS_BUILD_TESTS=ON
           else
-            cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+            cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DPS_BUILD_TESTS=ON
           fi
 
       - name: Build
@@ -81,7 +81,32 @@ jobs:
           fi
           $PV --strictness-level 5 --skip-gui-tests --validate-in-process --validate "$ART/VST3/$PRODUCT.vst3"
 
-      # ---------------- macOS: universal AU + VST3 + app, packaged as .pkg ----------------
+      - name: Audio pass-through test (VST3)
+        shell: bash
+        run: |
+          ART="build/${PRODUCT}_artefacts/$BUILD_TYPE"
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest.exe" "$ART/VST3/$PRODUCT.vst3"
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest.app/Contents/MacOS/AudioPassTest" "$ART/VST3/$PRODUCT.vst3"
+          else
+            xvfb-run -a "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest" "$ART/VST3/$PRODUCT.vst3"
+          fi
+
+      - name: Audio Unit validation and pass-through test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ART="build/${PRODUCT}_artefacts/$BUILD_TYPE"
+          codesign --force --deep --sign - "$ART/AU/$PRODUCT.component"
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R "$ART/AU/$PRODUCT.component" ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 3
+          auval -a | grep -i "Tico" || true
+          auval -strict -v aufx Tpsh Tico
+          "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest.app/Contents/MacOS/AudioPassTest" "AU:aufx,Tpsh,Tico"
+
+
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -92,18 +117,15 @@ jobs:
 
           mkdir -p pkgroot/au/Library/Audio/Plug-Ins/Components \
                    pkgroot/vst3/Library/Audio/Plug-Ins/VST3 \
-                   pkgroot/app/Applications \
-                   "pkgroot/presets/Library/Audio/Presets/Ticco Ross/PitchShifter"
+                   pkgroot/app/Applications
           cp -R "$ART/AU/$PRODUCT.component"   pkgroot/au/Library/Audio/Plug-Ins/Components/
           cp -R "$ART/VST3/$PRODUCT.vst3"      pkgroot/vst3/Library/Audio/Plug-Ins/VST3/
           cp -R "$ART/Standalone/$PRODUCT.app" pkgroot/app/Applications/
-          cp "Common Files/Presets/"*.xml      "pkgroot/presets/Library/Audio/Presets/Ticco Ross/PitchShifter/"
 
           ID=com.ticcoross.pitchshifter
           pkgbuild --root pkgroot/au      --identifier $ID.au      --version $VERSION --install-location / au.pkg
           pkgbuild --root pkgroot/vst3    --identifier $ID.vst3    --version $VERSION --install-location / vst3.pkg
           pkgbuild --root pkgroot/app     --identifier $ID.app     --version $VERSION --install-location / app.pkg
-          pkgbuild --root pkgroot/presets --identifier $ID.presets --version $VERSION --install-location / presets.pkg
 
           cat > distribution.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
@@ -112,16 +134,14 @@ jobs:
             <options customize="always" require-scripts="false" hostArchitectures="arm64,x86_64"/>
             <domains enable_localSystem="true"/>
             <choices-outline>
-              <line choice="au"/><line choice="vst3"/><line choice="app"/><line choice="presets"/>
+              <line choice="au"/><line choice="vst3"/><line choice="app"/>
             </choices-outline>
             <choice id="au" title="Audio Unit"><pkg-ref id="$ID.au"/></choice>
             <choice id="vst3" title="VST3"><pkg-ref id="$ID.vst3"/></choice>
             <choice id="app" title="Standalone app"><pkg-ref id="$ID.app"/></choice>
-            <choice id="presets" title="Presets"><pkg-ref id="$ID.presets"/></choice>
             <pkg-ref id="$ID.au">au.pkg</pkg-ref>
             <pkg-ref id="$ID.vst3">vst3.pkg</pkg-ref>
             <pkg-ref id="$ID.app">app.pkg</pkg-ref>
-            <pkg-ref id="$ID.presets">presets.pkg</pkg-ref>
           </installer-gui-script>
           EOF
           mkdir -p dist
@@ -134,10 +154,9 @@ jobs:
         shell: pwsh
         run: |
           $art = "build/$env:PRODUCT`_artefacts/$env:BUILD_TYPE"
-          New-Item -ItemType Directory -Force -Path stage/VST3, stage/Presets, dist | Out-Null
+          New-Item -ItemType Directory -Force -Path stage/VST3, dist | Out-Null
           Copy-Item -Recurse "$art/VST3/$env:PRODUCT.vst3" stage/VST3/
           Copy-Item "$art/Standalone/$env:PRODUCT.exe" stage/
-          Copy-Item "Common Files/Presets/*.xml" stage/Presets/
           Copy-Item $env:MANUAL stage/
           Compress-Archive -Path stage/* -DestinationPath "dist/$env:PRODUCT-$env:VERSION-Windows.zip"
 
@@ -154,10 +173,9 @@ jobs:
         run: |
           ART="build/${PRODUCT}_artefacts/$BUILD_TYPE"
           STAGE="$PRODUCT-$VERSION-Linux"
-          mkdir -p "$STAGE/Presets" dist
+          mkdir -p "$STAGE" dist
           cp -R "$ART/VST3/$PRODUCT.vst3" "$STAGE/"
           cp "$ART/Standalone/$PRODUCT" "$STAGE/"
-          cp "Common Files/Presets/"*.xml "$STAGE/Presets/"
           cp "$MANUAL" packaging/linux/install.sh "$STAGE/"
           chmod +x "$STAGE/install.sh" "$STAGE/$PRODUCT"
           tar czf "dist/$STAGE.tar.gz" "$STAGE"
@@ -189,7 +207,7 @@ jobs:
           files: dist/*
           body: |
             PitchShifter ${{ env.VERSION }} by Ticco Ross.
-            - macOS: universal .pkg (Audio Unit, VST3, standalone app, presets). Not signed by Apple; the first time, right-click it and choose Open.
-            - Windows: Setup .exe or .zip (VST3, standalone, presets).
+            - macOS: universal .pkg (Audio Unit, VST3, standalone app). Not signed by Apple; the first time, right-click it and choose Open.
+            - Windows: Setup .exe or .zip (VST3, standalone).
             - Linux: .tar.gz, run install.sh.
             The user manual (PitchShifter-Manual.pdf) is attached.

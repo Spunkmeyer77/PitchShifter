@@ -1,5 +1,5 @@
 #ifndef MyVersion
-  #define MyVersion "1.0.2"
+  #define MyVersion "1.0.3"
 #endif
 
 [Setup]
@@ -26,15 +26,14 @@ Name: "custom"; Description: "Custom installation"; Flags: iscustom
 [Components]
 Name: "vst3"; Description: "VST3 plugin"; Types: full custom
 Name: "app"; Description: "Standalone application"; Types: full custom
-Name: "presets"; Description: "Presets and user manual"; Types: full custom
+Name: "manual"; Description: "User manual"; Types: full custom
 
 [Files]
 Source: "stage\VST3\PitchShifter.vst3\*"; DestDir: "{commoncf64}\VST3\PitchShifter.vst3"; Components: vst3; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "stage\PitchShifter.exe"; DestDir: "{app}"; Components: app; Flags: ignoreversion
-Source: "stage\Presets\*.xml"; DestDir: "{app}\Presets"; Components: presets; Flags: ignoreversion
-Source: "stage\PitchShifter-Manual.pdf"; DestDir: "{app}"; Components: presets; Flags: ignoreversion
+Source: "stage\PitchShifter-Manual.pdf"; DestDir: "{app}"; Components: manual; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\PitchShifter"; Filename: "{app}\PitchShifter.exe"; Components: app
-Name: "{group}\PitchShifter manual"; Filename: "{app}\PitchShifter-Manual.pdf"; Components: presets
+Name: "{group}\PitchShifter manual"; Filename: "{app}\PitchShifter-Manual.pdf"; Components: manual
 Name: "{group}\Uninstall PitchShifter"; Filename: "{uninstallexe}"

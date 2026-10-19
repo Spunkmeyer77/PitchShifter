@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(PitchShifter VERSION 1.0.2 LANGUAGES C CXX)
+project(PitchShifter VERSION 1.0.3 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -43,6 +43,11 @@ juce_add_plugin(PitchShifter
 
 juce_generate_juce_header(PitchShifter)
 
+# Factory presets are compiled into the plugin.
+file(GLOB PS_FACTORY_PRESETS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Common Files/Presets/*.xml")
+juce_add_binary_data(PitchShifterPresets SOURCES ${PS_FACTORY_PRESETS})
+set_target_properties(PitchShifterPresets PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_sources(PitchShifter PRIVATE
     Source/Source/PluginProcessor.cpp
     Source/Source/PitchEditor.cpp)
@@ -64,6 +69,7 @@ endif()
 
 target_link_libraries(PitchShifter
     PRIVATE
+        PitchShifterPresets
         juce::juce_audio_utils
         juce::juce_audio_processors
         juce::juce_gui_extra
@@ -71,3 +77,14 @@ target_link_libraries(PitchShifter
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+# Test host used by CI: checks that audio actually passes through the built plugin.
+option(PS_BUILD_TESTS "Build the audio pass-through test host" OFF)
+if(PS_BUILD_TESTS)
+    juce_add_console_app(AudioPassTest PRODUCT_NAME "AudioPassTest" VERSION ${PROJECT_VERSION})
+    target_sources(AudioPassTest PRIVATE tests/AudioPassTest.cpp)
+    target_compile_definitions(AudioPassTest PRIVATE
+        JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(AudioPassTest PRIVATE
+        juce::juce_audio_processors juce::juce_gui_basics juce::juce_recommended_config_flags)
+endif()

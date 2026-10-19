@@ -93,6 +93,12 @@ void PitchShifterAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     pitchShift2.prepareToPlay(sr, samplesPerBlock);
     pitchShift3.prepareToPlay(sr, samplesPerBlock);
 
+    // Hosts (AU hosts especially) may set parameters before prepareToPlay, when the
+    // sample rate was still unknown. Re-apply every parameter now that it is known,
+    // so the DSP state never depends on the order the host does things in.
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            parameterChanged (ranged->getParameterID(), ranged->convertFrom0to1 (ranged->getValue()));
 }
 
 void PitchShifterAudioProcessor::releaseResources()

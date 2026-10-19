@@ -23,6 +23,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "Meter.h"
+#include "PresetBar.h"
 
 typedef AudioProcessorValueTreeState::SliderAttachment SliderAttachment;
 typedef AudioProcessorValueTreeState::ButtonAttachment ButtonAttachment;
@@ -151,6 +152,7 @@ private:
     std::unique_ptr<juce::ImageButton> redoButton;
     std::unique_ptr<juce::ImageButton> loadButton;
     std::unique_ptr<juce::ImageButton> saveButton;
+    std::unique_ptr<PresetBar> presetBar;
     juce::Path internalPath1;
 
     //==============================================================================

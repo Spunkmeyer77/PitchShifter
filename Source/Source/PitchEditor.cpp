@@ -293,6 +293,12 @@ PitchEditor::PitchEditor (PitchShifterAudioProcessor& p, AudioProcessorValueTree
                            juce::Image(), 1.000f, juce::Colour (0x00000000));
     saveButton->setBounds (56, 20, 31, 24);
 
+    presetBar.reset (new PresetBar (valueTreeState));
+    addAndMakeVisible (presetBar.get());
+    presetBar->setBounds (172, 14, 406, 48);
+    loadButton->setTooltip ("Import preset file");
+    saveButton->setTooltip ("Save preset");
+
 
     //[UserPreSize]
 
@@ -470,6 +476,7 @@ PitchEditor::~PitchEditor()
     redoButton = nullptr;
     loadButton = nullptr;
     saveButton = nullptr;
+    presetBar = nullptr;
 
 
     //[Destructor]. You can add your own custom destruction code here..
@@ -498,26 +505,7 @@ void PitchEditor::paint (juce::Graphics& g)
         g.fillPath(internalPath1, juce::AffineTransform::translation(x, y));
     }
 
-    {
-        float x = 172.0f, y = 14.0f, width = 406.0f, height = 48.0f;
-        juce::Colour strokeColour = juce::Colours::whitesmoke;
-        //[UserPaintCustomArguments] Customize the painting arguments here..
-        //[/UserPaintCustomArguments]
-        g.setColour(strokeColour);
-        g.drawRoundedRectangle(x, y, width, height, 10.000f, 2.000f);
-    }
-
-    {
-        int x = 175, y = 18, width = 400, height = 40;
-        juce::String text(TRANS("F@*ks with the Fabric of Time"));
-        juce::Colour fillColour = juce::Colours::white;
-        //[UserPaintCustomArguments] Customize the painting arguments here..
-        //[/UserPaintCustomArguments]
-        g.setColour(fillColour);
-        g.setFont(juce::Font(17.00f, juce::Font::plain).withTypefaceStyle("Bold").withExtraKerningFactor(0.250f));
-        g.drawText(text, x, y, width, height,
-            juce::Justification::centred, true);
-    }
+    // (preset bar replaces the old banner)
 
     {
         int x = 40, y = 85, width = 116, height = 16;
@@ -953,40 +941,13 @@ void PitchEditor::buttonClicked (juce::Button* buttonThatWasClicked)
     else if (buttonThatWasClicked == loadButton.get())
     {
         //[UserButtonCode_loadButton] -- add your button handler code here..
-        auto defaultPresetLocation = File::getSpecialLocation(File::SpecialLocationType::commonDocumentsDirectory);
-        juce::FileChooser chooser("Select preset to load...", defaultPresetLocation, "*.xml");
-
-        if (chooser.browseForFileToOpen())
-        {
-            auto file = chooser.getResult();
-            MemoryBlock sourceData;
-            file.loadFileAsData(sourceData);
-            processor.setStateInformation(sourceData.getData(), sourceData.getSize());
-        }
+        presetBar->importPreset();
         //[/UserButtonCode_loadButton]
     }
     else if (buttonThatWasClicked == saveButton.get())
     {
         //[UserButtonCode_saveButton] -- add your button handler code here..
-        auto defaultPresetLocation = File::getSpecialLocation(File::SpecialLocationType::commonDocumentsDirectory);
-        juce::FileChooser chooser("Select save position...", defaultPresetLocation, "*.xml");
-
-        if (chooser.browseForFileToSave(true))
-        {
-            auto file = chooser.getResult();
-
-            if (file.exists())
-                file.deleteFile();
-
-            juce::FileOutputStream outputStream(file);
-
-            if (outputStream.openedOk())
-            {
-                MemoryBlock destData;
-                processor.getStateInformation(destData);
-                outputStream.write(destData.getData(), destData.getSize());
-            }
-        }
+        presetBar->saveAs();
         //[/UserButtonCode_saveButton]
     }
 
@@ -1114,11 +1075,6 @@ BEGIN_JUCER_METADATA
     <TEXT pos="628 545 80 20" fill="solid: ffffffff" hasStroke="0" text="Fb"
           fontname="Default font" fontsize="15.0" kerning="0.25" bold="0"
           italic="0" justification="36"/>
-    <ROUNDRECT pos="142 14 406 48" cornerSize="10.0" fill="solid: 0" hasStroke="1"
-               stroke="2, mitered, butt" strokeColour="solid: fff5f5f5"/>
-    <TEXT pos="148 18 400 40" fill="solid: ffffffff" hasStroke="0" text="F@*ks with the Fabric of Time"
-          fontname="Default font" fontsize="17.0" kerning="0.25" bold="1"
-          italic="0" justification="36" typefaceStyle="Bold"/>
   </BACKGROUND>
   <SLIDER name="FB" id="3d3bf09c8beb858e" memberName="fbSlider2" virtualName=""
           explicitFocusOrder="0" pos="468 552 56 80" min="0.0" max="10.0"
