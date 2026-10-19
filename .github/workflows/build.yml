@@ -93,18 +93,23 @@ jobs:
       - name: Audio pass-through test (VST3)
         shell: bash
         run: |
+          set -o pipefail
+          note() { while IFS= read -r l; do echo "$l"; echo "::notice title=${{ matrix.name }} VST3 test::$l"; done; }
           ART="build/${PRODUCT}_artefacts/$BUILD_TYPE"
           if [ "$RUNNER_OS" == "Windows" ]; then
-            "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest.exe" "$ART/VST3/$PRODUCT.vst3"
+            "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest.exe" "$ART/VST3/$PRODUCT.vst3" | note
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest.app/Contents/MacOS/AudioPassTest" "$ART/VST3/$PRODUCT.vst3"
+            "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest.app/Contents/MacOS/AudioPassTest" "$ART/VST3/$PRODUCT.vst3" | note
           else
-            xvfb-run -a "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest" "$ART/VST3/$PRODUCT.vst3"
+            xvfb-run -a "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest" "$ART/VST3/$PRODUCT.vst3" | note
           fi
 
       - name: Audio Unit validation and pass-through test (macOS)
         if: runner.os == 'macOS'
+        shell: bash
         run: |
+          set -o pipefail
+          note() { while IFS= read -r l; do echo "$l"; echo "::notice title=AU test::$l"; done; }
           ART="build/${PRODUCT}_artefacts/$BUILD_TYPE"
           codesign --force --deep --sign - "$ART/AU/$PRODUCT.component"
           mkdir -p ~/Library/Audio/Plug-Ins/Components
@@ -112,8 +117,10 @@ jobs:
           killall -9 AudioComponentRegistrar 2>/dev/null || true
           sleep 3
           auval -a | grep -i "Tico" || true
-          auval -strict -v aufx Tpsh Tico
-          "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest.app/Contents/MacOS/AudioPassTest" "AU:aufx,Tpsh,Tico"
+          auval -strict -v aufx Tpsh Tico > auval.log 2>&1 && AUVAL=0 || AUVAL=$?
+          grep -E "AU VALIDATION|FAIL|ERROR|WARNING" auval.log | head -15 | note || true
+          [ $AUVAL -eq 0 ] || { echo "::error::auval failed"; exit 1; }
+          "build/AudioPassTest_artefacts/$BUILD_TYPE/AudioPassTest.app/Contents/MacOS/AudioPassTest" "AU:aufx,Tpsh,Tico" | note
 
 
       - name: Package (macOS)
