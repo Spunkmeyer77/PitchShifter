@@ -88,7 +88,13 @@ jobs:
             unzip -q pv.zip
             PV="xvfb-run -a ./pluginval"
           fi
-          $PV --strictness-level 5 --skip-gui-tests --validate-in-process --validate "$ART/VST3/$PRODUCT.vst3"
+          if ! $PV --strictness-level 5 --skip-gui-tests --validate-in-process --validate "$ART/VST3/$PRODUCT.vst3" > pluginval.log 2>&1; then
+            cat pluginval.log
+            grep -n -B4 -A6 -E "FAILED|!!!|Error|failed|crash" pluginval.log | head -40 | while IFS= read -r l; do echo "::error title=pluginval ${{ matrix.name }}::${l:0:400}"; done
+            tail -15 pluginval.log | while IFS= read -r l; do echo "::error title=pluginval tail::${l:0:400}"; done
+            exit 1
+          fi
+          tail -3 pluginval.log
 
       - name: Audio pass-through test (VST3)
         shell: bash
