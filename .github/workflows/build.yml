@@ -1,0 +1,183 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BUILD_TYPE: Release
+  PRODUCT: PitchShifter
+  MANUAL: PitchShifter-Manual.pdf
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-14
+          - name: Windows
+            os: windows-2022
+          - name: Linux
+            os: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/^project(PitchShifter VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Version $VERSION"
+
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev \
+            libfreetype6-dev libfontconfig1-dev libx11-dev libxcomposite-dev \
+            libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev
+
+      - name: Configure
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            cmake -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            cmake -B build -G "Visual Studio 17 2022" -A x64
+          else
+            cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+          fi
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 4
+
+      - name: Validate (pluginval)
+        shell: bash
+        run: |
+          ART="build/${PRODUCT}_artefacts/$BUILD_TYPE"
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            curl -sSL -o pv.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+            unzip -q pv.zip
+            PV=pluginval.app/Contents/MacOS/pluginval
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            curl -sSL -o pv.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip
+            7z x -y pv.zip > /dev/null
+            PV=./pluginval.exe
+          else
+            curl -sSL -o pv.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Linux.zip
+            unzip -q pv.zip
+            PV="xvfb-run -a ./pluginval"
+          fi
+          $PV --strictness-level 5 --skip-gui-tests --validate-in-process --validate "$ART/VST3/$PRODUCT.vst3"
+
+      # ---------------- macOS: universal AU + VST3 + app, packaged as .pkg ----------------
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ART="build/${PRODUCT}_artefacts/$BUILD_TYPE"
+          for b in "$ART/AU/$PRODUCT.component" "$ART/VST3/$PRODUCT.vst3" "$ART/Standalone/$PRODUCT.app"; do
+            codesign --force --deep --sign - "$b"
+          done
+
+          mkdir -p pkgroot/au/Library/Audio/Plug-Ins/Components \
+                   pkgroot/vst3/Library/Audio/Plug-Ins/VST3 \
+                   pkgroot/app/Applications \
+                   "pkgroot/presets/Library/Audio/Presets/Ticco Ross/PitchShifter"
+          cp -R "$ART/AU/$PRODUCT.component"   pkgroot/au/Library/Audio/Plug-Ins/Components/
+          cp -R "$ART/VST3/$PRODUCT.vst3"      pkgroot/vst3/Library/Audio/Plug-Ins/VST3/
+          cp -R "$ART/Standalone/$PRODUCT.app" pkgroot/app/Applications/
+          cp "Common Files/Presets/"*.xml      "pkgroot/presets/Library/Audio/Presets/Ticco Ross/PitchShifter/"
+
+          ID=com.ticcoross.pitchshifter
+          pkgbuild --root pkgroot/au      --identifier $ID.au      --version $VERSION --install-location / au.pkg
+          pkgbuild --root pkgroot/vst3    --identifier $ID.vst3    --version $VERSION --install-location / vst3.pkg
+          pkgbuild --root pkgroot/app     --identifier $ID.app     --version $VERSION --install-location / app.pkg
+          pkgbuild --root pkgroot/presets --identifier $ID.presets --version $VERSION --install-location / presets.pkg
+
+          cat > distribution.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <installer-gui-script minSpecVersion="2">
+            <title>PitchShifter $VERSION</title>
+            <options customize="always" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+            <domains enable_localSystem="true"/>
+            <choices-outline>
+              <line choice="au"/><line choice="vst3"/><line choice="app"/><line choice="presets"/>
+            </choices-outline>
+            <choice id="au" title="Audio Unit"><pkg-ref id="$ID.au"/></choice>
+            <choice id="vst3" title="VST3"><pkg-ref id="$ID.vst3"/></choice>
+            <choice id="app" title="Standalone app"><pkg-ref id="$ID.app"/></choice>
+            <choice id="presets" title="Presets"><pkg-ref id="$ID.presets"/></choice>
+            <pkg-ref id="$ID.au">au.pkg</pkg-ref>
+            <pkg-ref id="$ID.vst3">vst3.pkg</pkg-ref>
+            <pkg-ref id="$ID.app">app.pkg</pkg-ref>
+            <pkg-ref id="$ID.presets">presets.pkg</pkg-ref>
+          </installer-gui-script>
+          EOF
+          mkdir -p dist
+          productbuild --distribution distribution.xml --package-path . "dist/$PRODUCT-$VERSION-macOS.pkg"
+          cp "$MANUAL" dist/
+
+      # ---------------- Windows: VST3 + exe, Inno Setup installer + zip ----------------
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $art = "build/$env:PRODUCT`_artefacts/$env:BUILD_TYPE"
+          New-Item -ItemType Directory -Force -Path stage/VST3, stage/Presets, dist | Out-Null
+          Copy-Item -Recurse "$art/VST3/$env:PRODUCT.vst3" stage/VST3/
+          Copy-Item "$art/Standalone/$env:PRODUCT.exe" stage/
+          Copy-Item "Common Files/Presets/*.xml" stage/Presets/
+          Copy-Item $env:MANUAL stage/
+          Compress-Archive -Path stage/* -DestinationPath "dist/$env:PRODUCT-$env:VERSION-Windows.zip"
+
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+            $env:Path += ";C:\Program Files (x86)\Inno Setup 6"
+          }
+          iscc /DMyVersion=$env:VERSION "/O$PWD\dist" packaging/windows/installer.iss
+          Copy-Item $env:MANUAL dist/
+
+      # ---------------- Linux: VST3 + standalone tarball ----------------
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          ART="build/${PRODUCT}_artefacts/$BUILD_TYPE"
+          STAGE="$PRODUCT-$VERSION-Linux"
+          mkdir -p "$STAGE/Presets" dist
+          cp -R "$ART/VST3/$PRODUCT.vst3" "$STAGE/"
+          cp "$ART/Standalone/$PRODUCT" "$STAGE/"
+          cp "Common Files/Presets/"*.xml "$STAGE/Presets/"
+          cp "$MANUAL" packaging/linux/install.sh "$STAGE/"
+          chmod +x "$STAGE/install.sh" "$STAGE/$PRODUCT"
+          tar czf "dist/$STAGE.tar.gz" "$STAGE"
+          cp "$MANUAL" dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PRODUCT }}-${{ env.VERSION }}-${{ matrix.name }}
+          path: dist/*
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

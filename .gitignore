@@ -1,0 +1,9 @@
+/Windows/
+/MacOS/
+Changelog.txt
+build*/
+stage/
+dist/
+pkgroot/
+*.pkg
+.DS_Store
