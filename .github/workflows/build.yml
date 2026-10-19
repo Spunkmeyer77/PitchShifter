@@ -169,15 +169,27 @@ jobs:
           path: dist/*
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Publishes a release for the version in CMakeLists.txt on every push to main (or a v* tag).
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        run: echo "VERSION=$(sed -n 's/^project(PitchShifter VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.VERSION }}
+          name: PitchShifter ${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
           files: dist/*
-          generate_release_notes: true
+          body: |
+            PitchShifter ${{ env.VERSION }} by Ticco Ross.
+            - macOS: universal .pkg (Audio Unit, VST3, standalone app, presets). Not signed by Apple; the first time, right-click it and choose Open.
+            - Windows: Setup .exe or .zip (VST3, standalone, presets).
+            - Linux: .tar.gz, run install.sh.
+            The user manual (PitchShifter-Manual.pdf) is attached.
