@@ -2,6 +2,10 @@
 #include "Parameters.h"
 #include "PitchEditor.h"
 
+#if JucePlugin_Build_Standalone
+ #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
+#endif
+
 #define DEFAULT_FILTER 20000.0f
 #define DEFAULT_QFILTER 0.707f
 
@@ -55,6 +59,20 @@ PitchShifterAudioProcessor::PitchShifterAudioProcessor()
     pitchShift2.pitchSetParameters();
     pitchShift3.pitchSetParameters();
 
+   #if JucePlugin_Build_Standalone
+    // JUCE's standalone app mutes the audio input by default (to avoid feedback),
+    // which makes an effect look dead. Pass input through unless the user has
+    // already chosen a setting in the app's audio settings.
+    if (wrapperType == wrapperType_Standalone)
+    {
+        juce::MessageManager::callAsync ([]
+        {
+            if (auto* holder = juce::StandalonePluginHolder::getInstance())
+                if (holder->settings == nullptr || ! holder->settings->containsKey ("shouldMuteInput"))
+                    holder->getMuteInputValue().setValue (false);
+        });
+    }
+   #endif
 }
 
 PitchShifterAudioProcessor::~PitchShifterAudioProcessor()
