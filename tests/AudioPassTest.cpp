@@ -112,7 +112,7 @@ int main (int argc, char** argv)
 
     bool ok = true;
     struct Case { int channels; double sampleRate; int blockSize; };
-    const Case cases[] { { 2, 44100.0, 512 }, { 2, 48000.0, 1024 }, { 1, 48000.0, 256 } };
+    const Case cases[] { { 2, 44100.0, 512 }, { 2, 48000.0, 1024 }, { 2, 96000.0, 128 }, { 1, 48000.0, 256 } };
     for (const auto& c : cases)
         ok = runLayout (*plugin, c.channels, c.sampleRate, c.blockSize) && ok;
 

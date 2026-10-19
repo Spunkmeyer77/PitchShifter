@@ -13,6 +13,8 @@ public:
 		sr = sampleRate;
 		memorySize = roundToInt(MAX_DELAY_TIME * sampleRate) + maxNumSamples;
 		delayMemory.setSize(2, memorySize);
+		delayMemory.clear();
+		writeIndex = 0;   // the old position may lie past the end of a smaller buffer
 		initialize();
 	}
 
@@ -148,10 +150,11 @@ private:
 			auto actualWriteIndex = (writeIndex + smp) % memorySize;
 			auto actualReadIndex = memorySize + actualWriteIndex - (dt * sr);
 
-			auto integerPart = (int)actualReadIndex;
-			auto fractionalPart = actualReadIndex - integerPart;
+			const auto flooredIndex = std::floor(actualReadIndex);
+			auto integerPart = (int)flooredIndex;
+			auto fractionalPart = actualReadIndex - flooredIndex;
 
-			auto A = (integerPart + memorySize) % memorySize;
+			auto A = ((integerPart % memorySize) + memorySize) % memorySize;   // always inside the buffer
 			auto B = (A + 1) % memorySize;
 
 			const auto alpha = fractionalPart / (2.0f - fractionalPart);
@@ -241,10 +244,11 @@ private:
 				auto actualWriteIndex = (writeIndex + smp) % memorySize;
 				auto actualReadIndex = memorySize + actualWriteIndex - (dt * sr);
 
-				auto integerPart = (int)actualReadIndex;
-				auto fractionalPart = actualReadIndex - integerPart;
+				const auto flooredIndex = std::floor(actualReadIndex);
+				auto integerPart = (int)flooredIndex;
+				auto fractionalPart = actualReadIndex - flooredIndex;
 
-				auto A = (integerPart + memorySize) % memorySize;
+				auto A = ((integerPart % memorySize) + memorySize) % memorySize;   // always inside the buffer
 				auto B = (A + 1) % memorySize;
 
 				const auto alpha = fractionalPart / (2.0f - fractionalPart);

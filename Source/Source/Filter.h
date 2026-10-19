@@ -81,7 +81,7 @@ public:
 
 	void setFrequency(float newValue)
 	{
-		frequency = jmin(newValue, (float)(sampleRate * 0.499));
+		frequency = newValue;
 		updateCoefficients();
 	}
 
@@ -102,7 +102,12 @@ private:
 	void updateCoefficients()
 	{
 		// Esercizio: un bello switch-case col tipo di filtro scelto da parametro
-		const IIRCoefficients iirCoeffs = IIRCoefficients::makeLowPass(sampleRate, frequency, quality);
+		// Keep the cutoff well below Nyquist: a biquad tuned right at Nyquist is numerically
+		// unstable (it produced NaNs on Apple Silicon). Also guard against an unknown sample rate.
+		if (sampleRate <= 0.0)
+			return;
+		const double safeFrequency = jlimit(10.0, jmin(sampleRate * 0.45, 20000.0), (double) frequency);
+		const IIRCoefficients iirCoeffs = IIRCoefficients::makeLowPass(sampleRate, safeFrequency, quality);
 		// (fine swirtch)
 
 		for (int f = iirFilters.size(); --f >= 0;)
